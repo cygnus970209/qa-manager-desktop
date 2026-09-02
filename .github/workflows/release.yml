@@ -48,6 +48,7 @@ jobs:
       - run: npm ci || npm install
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS 서명·공증. Tauri CLI 가 이 변수들을 읽어 임시 키체인에 인증서를 넣고
@@ -63,3 +64,26 @@ jobs:
           releaseName: 'QA Manager ${{ github.ref_name }}'
           releaseDraft: true
           args: ${{ matrix.args }}
+
+      # Tauri 는 .app 만 공증하고 .dmg 는 서명만 한다. 서명만 된 dmg 는 열 때 Gatekeeper 경고가 뜨므로
+      # dmg 도 공증·스테이플한 뒤 Release 자산을 교체한다. (GitHub 은 자산 이름의 공백을 '.' 으로 바꾼다)
+      - name: Notarize & staple DMG
+        if: startsWith(matrix.platform, 'macos')
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dmg in src-tauri/target/*/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/dmg/*.dmg; do
+            echo "Notarizing $dmg"
+            xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            asset="$(basename "$dmg" | tr ' ' '.')"
+            gh release delete-asset "$TAG" "$asset" -y || true
+            gh release upload "$TAG" "$dmg"
+          done

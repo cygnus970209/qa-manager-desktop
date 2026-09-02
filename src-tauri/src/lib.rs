@@ -10,10 +10,12 @@
 
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Mutex};
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, RunEvent, State, Url, WebviewUrl, WebviewWindowBuilder,
+    Manager, State, Url, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
 
@@ -300,12 +302,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // macOS: 독 아이콘 클릭 시 창 복원
+            // macOS: 독 아이콘 클릭 시 창 복원 (RunEvent::Reopen 은 macOS 전용 variant — 다른 OS 는 컴파일 제외)
+            #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = event {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.set_focus();
                 }
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
         });
 }
