@@ -1,5 +1,7 @@
 # 태그(v*) 푸시 시 macOS(arm64/x64) · Windows · Linux 번들을 빌드해 GitHub Release 초안에 첨부한다.
-# 코드사이닝은 미설정 상태 — 사내 배포 기준(맥: 우클릭 열기 안내). 서명 도입 시 tauri-action 시크릿 추가.
+# macOS: Developer ID Application 서명 + Apple ID 방식 공증(notarization). 아래 APPLE_* 시크릿이 필요하다.
+# Windows: 미서명 (SmartScreen 경고 → "추가 정보 > 실행"). 외부 배포 시 Azure Artifact Signing 도입 예정.
+# Linux: 서명 불필요.
 name: release
 on:
   push:
@@ -48,6 +50,14 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS 서명·공증. Tauri CLI 가 이 변수들을 읽어 임시 키체인에 인증서를 넣고
+          # 서명(hardened runtime) → 공증 → 스테이플까지 처리한다. macOS 외 러너에서는 무시된다.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'QA Manager ${{ github.ref_name }}'

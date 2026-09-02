@@ -3,3 +3,10 @@ src-tauri/target/
 dist/
 .DS_Store
 .idea/
+
+# 서명 인증서/키 — 절대 커밋 금지 (GitHub Secrets 로만 전달)
+*.p12
+*.p8
+*.cer
+*.pem
+*.key
