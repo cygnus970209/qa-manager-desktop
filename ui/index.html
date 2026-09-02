@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QA Manager</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --text: #1e293b;
+      --muted: #64748b; --faint: #94a3b8; --accent: #059669; --accent-hover: #047857;
+      --danger: #e11d48; --input-bg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120; --card: #0f172a; --border: #1e293b; --text: #9aa5ba;
+        --muted: #7f8aa0; --faint: #6f7a90; --accent: #10b981; --accent-hover: #059669;
+        --danger: #fb7185; --input-bg: #0f172a;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: var(--bg); color: var(--text);
+      display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px;
+      -webkit-user-select: none; user-select: none;
+    }
+    .card {
+      width: 100%; max-width: 460px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 16px; padding: 28px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .brand .logo {
+      width: 34px; height: 34px; border-radius: 9px; background: var(--accent);
+      display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px;
+    }
+    h1 { font-size: 18px; font-weight: 700; }
+    .subtitle { font-size: 12px; color: var(--muted); margin: 6px 0 20px; }
+    .section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+    .server {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer;
+      transition: border-color .15s;
+    }
+    .server:hover { border-color: var(--accent); }
+    .server .info { flex: 1; min-width: 0; }
+    .server .name { font-size: 13px; font-weight: 600; }
+    .server .url { font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .server button.remove {
+      background: none; border: none; color: var(--faint); cursor: pointer; font-size: 14px; padding: 4px;
+    }
+    .server button.remove:hover { color: var(--danger); }
+    .server .go { color: var(--accent); font-size: 13px; font-weight: 600; }
+    .empty { font-size: 12px; color: var(--faint); text-align: center; padding: 18px 0; }
+    form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+    input {
+      width: 100%; padding: 9px 12px; font-size: 13px; color: var(--text);
+      background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    button.primary {
+      margin-top: 4px; padding: 10px; font-size: 13px; font-weight: 600; color: #fff;
+      background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
+    }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled { opacity: .6; cursor: default; }
+    .error { font-size: 12px; color: var(--danger); min-height: 16px; margin-top: 6px; }
+    .hint { font-size: 11px; color: var(--faint); margin-top: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">QA</div>
+      <h1>QA Manager</h1>
+    </div>
+    <p class="subtitle" data-i18n="subtitle"></p>
+
+    <div class="section-label" data-i18n="servers"></div>
+    <div id="server-list"></div>
+
+    <form id="add-form">
+      <div class="section-label" data-i18n="addServer"></div>
+      <input id="name" type="text" maxlength="50" autocomplete="off" />
+      <input id="url" type="text" maxlength="300" autocomplete="off" spellcheck="false" />
+      <button class="primary" id="add-btn" type="submit"></button>
+      <div class="error" id="error"></div>
+    </form>
+
+    <p class="hint" data-i18n="hint"></p>
+  </div>
+
+  <script>
+    // 간이 i18n — 시스템 언어 기준 (웹앱 본체는 자체 i18n 사용)
+    const ko = navigator.language?.toLowerCase().startsWith('ko')
+    const T = ko ? {
+      subtitle: '접속할 QA Manager 서버를 선택하세요. 셀프호스팅 서버 주소를 추가할 수 있습니다.',
+      servers: '서버 목록', addServer: '서버 추가',
+      namePh: '서버 이름 (예: 우리 팀 QA)', urlPh: 'https://qa.example.com',
+      add: '연결 확인 후 추가', adding: '확인 중...',
+      empty: '등록된 서버가 없습니다. 아래에서 추가하세요.',
+      remove: '삭제', connect: '접속 →',
+      hint: '창을 닫아도 트레이에 남아 알림을 계속 받습니다.',
+    } : {
+      subtitle: 'Choose a QA Manager server to connect to. You can add your self-hosted server URL.',
+      servers: 'Servers', addServer: 'Add a server',
+      namePh: 'Server name (e.g. Team QA)', urlPh: 'https://qa.example.com',
+      add: 'Verify & add', adding: 'Checking...',
+      empty: 'No servers yet — add one below.',
+      remove: 'Remove', connect: 'Connect →',
+      hint: 'Closing the window keeps the app in the tray so notifications continue.',
+    }
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = T[el.dataset.i18n] })
+    document.getElementById('name').placeholder = T.namePh
+    document.getElementById('url').placeholder = T.urlPh
+    document.getElementById('add-btn').textContent = T.add
+
+    const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args)
+    const listEl = document.getElementById('server-list')
+    const errorEl = document.getElementById('error')
+    const addBtn = document.getElementById('add-btn')
+
+    function render(config) {
+      listEl.innerHTML = ''
+      if (!config.servers.length) {
+        const p = document.createElement('div')
+        p.className = 'empty'
+        p.textContent = T.empty
+        listEl.appendChild(p)
+        return
+      }
+      for (const s of config.servers) {
+        const row = document.createElement('div')
+        row.className = 'server'
+        row.innerHTML = `
+          <div class="info">
+            <div class="name"></div>
+            <div class="url"></div>
+          </div>
+          <button class="remove" type="button" title="${T.remove}">✕</button>
+          <span class="go">${T.connect}</span>`
+        row.querySelector('.name').textContent = s.name
+        row.querySelector('.url').textContent = s.url
+        row.addEventListener('click', () => invoke('connect', { id: s.id }).catch((e) => { errorEl.textContent = String(e) }))
+        row.querySelector('.remove').addEventListener('click', async (e) => {
+          e.stopPropagation()
+          render(await invoke('remove_server', { id: s.id }))
+        })
+        listEl.appendChild(row)
+      }
+    }
+
+    document.getElementById('add-form').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      errorEl.textContent = ''
+      const name = document.getElementById('name').value
+      const url = document.getElementById('url').value
+      addBtn.disabled = true
+      addBtn.textContent = T.adding
+      try {
+        await invoke('add_server', { name, url })
+        document.getElementById('name').value = ''
+        document.getElementById('url').value = ''
+        render(await invoke('list_servers'))
+      } catch (err) {
+        errorEl.textContent = String(err)
+      } finally {
+        addBtn.disabled = false
+        addBtn.textContent = T.add
+      }
+    })
+
+    invoke('list_servers').then(render).catch((e) => { errorEl.textContent = String(e) })
+  </script>
+</body>
+</html>
