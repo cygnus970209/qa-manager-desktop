@@ -1,6 +1,6 @@
 [package]
 name = "qa-manager-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "QA Manager desktop shell"
 edition = "2021"
 
@@ -23,6 +23,8 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 url = "2"
+tauri-plugin-updater = "2"
+tokio = { version = "1", features = ["time"] }
 
 # 네이티브 알림 + 클릭 응답 (Tauri 알림 플러그인은 데스크톱에서 클릭 이벤트를 제공하지 않아 직접 사용)
 # Windows/Linux: notify-rust. macOS: 최신 UNUserNotificationCenter(mac-usernotifications) —

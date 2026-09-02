@@ -5,6 +5,7 @@
 //! - 원격 페이지(웹앱)가 호출하는 브리지 커맨드: desktop_notify / set_badge
 //!   (웹앱은 `window.__QAM_DESKTOP__` 만 알고 Tauri 에 종속되지 않는다)
 //! - 알림 클릭: notify-rust 응답 대기 → 창 표시 → 웹앱이 등록한 `__QAM_DESKTOP__.onNotificationClick(tag)` 호출
+//! - 자동 업데이트: 시작 5초 후 + 6시간마다 GitHub Release 의 latest.json 확인, 트레이 "업데이트 확인" 으로 수동 확인
 //!
 //! 커맨드 추가 시: `build.rs` 의 AppManifest 목록 + `capabilities/*.json` 권한(allow-<command>)을
 //! 함께 갱신해야 한다. 원격 페이지에서 호출하는 커맨드는 `main-remote.json` 에도 넣는다.
@@ -19,6 +20,7 @@ use tauri::{
     Manager, State, Url, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
 
 /* ─────────────── 서버 설정 (servers.json) ─────────────── */
 
@@ -42,6 +44,8 @@ struct AppState {
     config: Mutex<ServerConfig>,
     /// 런처(로컬 index.html)의 URL — "서버 선택" 시 되돌아갈 목적지
     launcher_url: Mutex<Option<Url>>,
+    /// 자동 확인에서 이미 안내한 새 버전 (세션당 한 번만 묻기 위해)
+    update_notified: Mutex<Option<String>>,
 }
 
 fn load_config(path: &PathBuf) -> ServerConfig {
@@ -348,6 +352,80 @@ fn show_notification_guidance(app: &tauri::AppHandle) {
     }
 }
 
+/* ─────────────── 자동 업데이트 ─────────────── */
+
+/// 업데이트 확인. `manual`(트레이 메뉴)이면 결과를 항상 다이얼로그로 알리고, 자동 확인이면 새 버전이 있을 때만 묻는다.
+/// 설치는 사용자가 "지금 업데이트"를 눌렀을 때만 진행하고, 끝나면 앱을 다시 시작한다 (Windows 는 설치기가 앱을 종료·재실행).
+fn check_for_update(app: tauri::AppHandle, manual: bool) {
+    tauri::async_runtime::spawn(async move {
+        let updater = match app.updater() {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("[qam] updater 초기화 실패: {e}");
+                if manual {
+                    info_dialog(&app, "업데이트 확인", &format!("업데이트를 확인할 수 없습니다.\n{e}"));
+                }
+                return;
+            }
+        };
+        match updater.check().await {
+            Ok(Some(update)) => {
+                let version = update.version.clone();
+                if !manual {
+                    let state = app.state::<AppState>();
+                    let mut notified = state.update_notified.lock().unwrap();
+                    if notified.as_deref() == Some(version.as_str()) {
+                        return;
+                    }
+                    *notified = Some(version.clone());
+                }
+                let app2 = app.clone();
+                app.dialog()
+                    .message(format!(
+                        "새 버전 v{version} 이 있습니다 (현재 v{}).\n지금 다운로드해 설치하고 앱을 다시 시작할까요?",
+                        update.current_version
+                    ))
+                    .title("QA Manager 업데이트")
+                    .kind(MessageDialogKind::Info)
+                    .buttons(MessageDialogButtons::OkCancelCustom("지금 업데이트".into(), "나중에".into()))
+                    .show(move |ok| {
+                        if !ok {
+                            return;
+                        }
+                        tauri::async_runtime::spawn(async move {
+                            match update.download_and_install(|_, _| {}, || {}).await {
+                                Ok(()) => app2.restart(),
+                                Err(e) => {
+                                    eprintln!("[qam] 업데이트 설치 실패: {e}");
+                                    info_dialog(&app2, "업데이트 실패", &format!("업데이트를 설치하지 못했습니다.\n{e}"));
+                                }
+                            }
+                        });
+                    });
+            }
+            Ok(None) => {
+                if manual {
+                    info_dialog(&app, "업데이트 확인", &format!("최신 버전입니다 (v{}).", app.package_info().version));
+                }
+            }
+            Err(e) => {
+                eprintln!("[qam] 업데이트 확인 실패: {e}");
+                if manual {
+                    info_dialog(&app, "업데이트 확인", &format!("업데이트 정보를 가져올 수 없습니다.\n{e}"));
+                }
+            }
+        }
+    });
+}
+
+fn info_dialog(app: &tauri::AppHandle, title: &str, message: &str) {
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Info)
+        .show(|_| {});
+}
+
 /* ─────────────── 앱 셋업 ─────────────── */
 
 /// 원격 페이지에 주입되는 브리지. 웹앱은 이 전역 객체만 사용한다(Tauri 비종속 인터페이스).
@@ -384,6 +462,7 @@ pub fn run() {
     let _ = env_logger::try_init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // macOS: 알림 권한 미결정이면 시스템 팝업, 거부면 안내 (별도 스레드)
             #[cfg(target_os = "macos")]
@@ -405,6 +484,7 @@ pub fn run() {
                 config_path,
                 config: Mutex::new(config),
                 launcher_url: Mutex::new(None),
+                update_notified: Mutex::new(None),
             });
 
             // 메인 창 (런처 로드 + 브리지 주입 — 주입 스크립트는 이후 내비게이션에도 유지됨)
@@ -428,11 +508,24 @@ pub fn run() {
                 }
             }
 
-            // 트레이: 열기 / 서버 선택 / 종료
+            // 자동 업데이트: 시작 5초 후 한 번, 이후 6시간마다
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    loop {
+                        check_for_update(handle.clone(), false);
+                        tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+                    }
+                });
+            }
+
+            // 트레이: 열기 / 서버 선택 / 업데이트 확인 / 종료
             let show_item = MenuItem::with_id(app, "show", "열기", true, None::<&str>)?;
             let servers_item = MenuItem::with_id(app, "servers", "서버 선택", true, None::<&str>)?;
+            let update_item = MenuItem::with_id(app, "update", "업데이트 확인", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &servers_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &servers_item, &update_item, &quit_item])?;
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -453,6 +546,7 @@ pub fn run() {
                                 let _ = open_launcher(w, state);
                             }
                         }
+                        "update" => check_for_update(app.clone(), true),
                         "quit" => app.exit(0),
                         _ => {}
                     }

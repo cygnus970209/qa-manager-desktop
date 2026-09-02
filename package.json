@@ -1,6 +1,6 @@
 {
   "name": "qa-manager-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "QA Manager desktop shell (Tauri) — connect to any self-hosted or cloud QA Manager server",
   "scripts": {

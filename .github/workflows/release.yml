@@ -4,6 +4,8 @@
 # macOS: Developer ID Application 서명 + Apple ID 방식 공증(notarization). 아래 APPLE_* 시크릿이 필요하다.
 # Windows: 미서명 (SmartScreen 경고 → "추가 정보 > 실행"). 외부 배포 시 Azure Artifact Signing 도입 예정.
 # Linux: 서명 불필요.
+# 자동 업데이트: 빌드마다 .sig 를 만들고 tauri-action 이 latest.json 을 릴리스에 올린다(여러 잡의 결과를 병합).
+#   앱은 releases/latest/download/latest.json 을 조회하므로 게시(publish)된 뒤에야 업데이트가 노출된다.
 name: release
 on:
   push:
@@ -60,11 +62,15 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # 자동 업데이트 자산(.sig, latest.json) 서명. 키는 `tauri signer generate` 로 생성, 공개키는 tauri.conf.json 에.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'QA Manager ${{ github.ref_name }}'
           releaseDraft: true
-          args: ${{ matrix.args }}
+          # tauri.ci.conf.json: createUpdaterArtifacts 를 CI 에서만 켠다 (로컬 `npm run build` 는 서명 키 없이도 되도록)
+          args: --config src-tauri/tauri.ci.conf.json ${{ matrix.args }}
 
       # Tauri 는 .app 만 공증하고 .dmg 는 서명만 한다. 서명만 된 dmg 는 열 때 Gatekeeper 경고가 뜨므로
       # dmg 도 공증·스테이플한 뒤 Release 자산을 교체한다. (GitHub 은 자산 이름의 공백을 '.' 으로 바꾼다)

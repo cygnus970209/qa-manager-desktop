@@ -33,10 +33,21 @@ Tauri v2 는 원격 페이지(서버 웹앱)가 앱 커맨드를 호출할 때 �
 - `src-tauri/capabilities/main-remote.json` — 웹앱이 쓰는 브리지 커맨드.
   `remote.urls` 는 `http://*:*` 처럼 포트 와일드카드가 있어야 `http://host:8080` 같은 주소가 매칭됩니다.
 
-## 업데이트
+## 자동 업데이트
 
-자동 업데이트는 아직 없습니다. 태그(`v*`) 푸시 시 GitHub Actions 가 각 OS 번들을 빌드해 Release 초안에 첨부하고,
-사용자는 직접 내려받아 설치합니다. 코드 서명·updater 서명 키를 도입하면 `tauri-plugin-updater` 로 전환할 예정입니다.
+`tauri-plugin-updater` 로 GitHub Release 의 `latest.json` 을 확인합니다 (시작 5초 후 + 6시간마다, 트레이 "업데이트 확인").
+새 버전이 있으면 다이얼로그로 묻고, "지금 업데이트"를 누르면 내려받아 설치한 뒤 앱을 다시 시작합니다.
+
+- 업데이트 자산 서명 키: `tauri signer generate` 로 생성. 공개키는 `tauri.conf.json` 의 `plugins.updater.pubkey`,
+  비밀키와 비밀번호는 GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+  **비밀키를 잃으면 이미 설치된 앱이 이후 버전을 받지 못하므로** 팀 비밀 저장소에 사본을 보관할 것.
+- `.sig` 와 `latest.json` 은 CI 에서만 만든다 (`tauri.ci.conf.json` 의 `createUpdaterArtifacts`). 로컬 `npm run build` 는 키 없이 된다.
+- Linux 는 AppImage 만 자동 업데이트를 지원한다 (deb/rpm 은 패키지 관리자로 갱신).
+
+## 릴리스
+
+태그(`v*`) 푸시 → GitHub Actions 가 macOS(universal)·Windows·Linux 번들을 빌드해 Release 초안에 첨부하고,
+모두 성공하면 자동 게시합니다. 태그 전에 `tauri.conf.json`, `Cargo.toml`, `package.json` 의 버전을 올리세요.
 
 ## 개발
 
