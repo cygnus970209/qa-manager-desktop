@@ -177,6 +177,90 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the add_server command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-add-server",
+          "markdownDescription": "Enables the add_server command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-connect",
+          "markdownDescription": "Enables the connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the desktop_notify command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-desktop-notify",
+          "markdownDescription": "Enables the desktop_notify command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-servers",
+          "markdownDescription": "Enables the list_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_launcher command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-launcher",
+          "markdownDescription": "Enables the open_launcher command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_server command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-server",
+          "markdownDescription": "Enables the remove_server command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_badge command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-badge",
+          "markdownDescription": "Enables the set_badge command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the add_server command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-add-server",
+          "markdownDescription": "Denies the add_server command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-connect",
+          "markdownDescription": "Denies the connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the desktop_notify command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-desktop-notify",
+          "markdownDescription": "Denies the desktop_notify command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-servers",
+          "markdownDescription": "Denies the list_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_launcher command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-launcher",
+          "markdownDescription": "Denies the open_launcher command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_server command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-server",
+          "markdownDescription": "Denies the remove_server command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_badge command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-badge",
+          "markdownDescription": "Denies the set_badge command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

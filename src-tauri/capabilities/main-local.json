@@ -2,5 +2,13 @@
   "identifier": "main-local",
   "description": "런처(로컬 UI) — 서버 관리 커맨드 사용",
   "windows": ["main"],
-  "permissions": ["core:default", "notification:default"]
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "allow-list-servers",
+    "allow-add-server",
+    "allow-remove-server",
+    "allow-connect",
+    "allow-open-launcher"
+  ]
 }

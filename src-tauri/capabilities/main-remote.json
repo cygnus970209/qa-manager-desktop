@@ -1,9 +1,16 @@
 {
   "identifier": "main-remote",
-  "description": "원격 서버 페이지(웹앱) — 알림/뱃지 브리지 커맨드만 노출. 서버 URL 은 사용자가 런타임에 추가하므로 http/https 전체를 허용한다.",
+  "description": "원격 서버 페이지(웹앱) — 알림/뱃지 브리지 커맨드만 노출. 서버 URL 은 사용자가 런타임에 추가하므로 http/https 전체를 허용한다. 패턴에 `:*` 가 없으면 기본 포트(80/443) 외 주소(예: http://host:8080)는 매칭되지 않는다.",
+  "local": false,
   "windows": ["main"],
   "remote": {
-    "urls": ["http://**", "https://**"]
+    "urls": ["http://*:*", "https://*:*"]
   },
-  "permissions": ["core:default", "notification:default"]
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "allow-desktop-notify",
+    "allow-set-badge",
+    "allow-open-launcher"
+  ]
 }

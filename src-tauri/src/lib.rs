@@ -4,6 +4,9 @@
 //! - 트레이 상주: 창을 닫아도 종료되지 않고 숨김 (SSE 연결 유지 → 알림 수신)
 //! - 원격 페이지(웹앱)가 호출하는 브리지 커맨드: desktop_notify / set_badge
 //!   (웹앱은 `window.__QAM_DESKTOP__` 만 알고 Tauri 에 종속되지 않는다)
+//!
+//! 커맨드 추가 시: `build.rs` 의 AppManifest 목록 + `capabilities/*.json` 권한(allow-<command>)을
+//! 함께 갱신해야 한다. 원격 페이지에서 호출하는 커맨드는 `main-remote.json` 에도 넣는다.
 
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Mutex};
@@ -140,7 +143,6 @@ fn connect(
         entry.url
     };
     let parsed = Url::parse(&url).map_err(|e| e.to_string())?;
-    let mut window = window;
     window.navigate(parsed).map_err(|e| e.to_string())
 }
 
@@ -159,7 +161,6 @@ fn open_launcher(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Re
         config.last = None;
         save_config(&state.config_path, &config);
     }
-    let mut window = window;
     window.navigate(launcher).map_err(|e| e.to_string())
 }
 
@@ -191,7 +192,10 @@ const BRIDGE_JS: &str = r#"
     var f = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke)
       || (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
     if (!f) return Promise.resolve();
-    return f(cmd, args).catch(function () {});
+    return f(cmd, args).catch(function (e) {
+      // ACL 거부 등 실패를 삼키지 않고 남긴다 (웹앱 동작에는 영향 없음)
+      console.warn('[QAM desktop] ' + cmd + ' 실패:', e);
+    });
   }
   window.__QAM_DESKTOP__ = {
     notify: function (p) { return inv('desktop_notify', { title: (p && p.title) || 'QA Manager', body: (p && p.body) || '' }); },
@@ -239,7 +243,7 @@ pub fn run() {
             // 마지막 서버 자동 접속
             if let Some(url) = last_url {
                 if let Ok(parsed) = Url::parse(&url) {
-                    let mut w = window.clone();
+                    let w = window.clone();
                     let _ = w.navigate(parsed);
                 }
             }
