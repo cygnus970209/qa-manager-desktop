@@ -5,6 +5,16 @@
 AFFiNE 방식의 **서버 선택형** 앱입니다 — 셀프호스팅 서버 URL 을 추가해 접속하고,
 추후 SaaS(공식 클라우드 서버)가 생기면 같은 목록에 추가하는 것으로 확장됩니다.
 
+## 설치
+
+[Releases](https://github.com/cygnus970209/qa-manager-desktop/releases) 에서 OS 에 맞는 파일을 내려받습니다. 설치 후에는 앱이 새 버전을 스스로 확인합니다.
+
+| OS | 파일 | 비고 |
+|---|---|---|
+| macOS (Apple Silicon · Intel 공용) | `QA.Manager_<버전>_universal.dmg` | Developer ID 서명 + 공증 완료 — 바로 열림 |
+| Windows | `..._x64-setup.exe` 또는 `..._x64_en-US.msi` | 미서명 — SmartScreen 경고 시 "추가 정보 → 실행" |
+| Linux | `.AppImage` / `.deb` / `.rpm` | 자동 업데이트는 AppImage 만 |
+
 ## 구조
 
 - **런처(로컬 화면)** — 서버 목록/추가/삭제, `/api/ping` 헬스체크 후 저장
@@ -46,18 +56,41 @@ Tauri v2 는 원격 페이지(서버 웹앱)가 앱 커맨드를 호출할 때 �
 
 ## 릴리스
 
-태그(`v*`) 푸시 → GitHub Actions 가 macOS(universal)·Windows·Linux 번들을 빌드해 Release 초안에 첨부하고,
-모두 성공하면 자동 게시합니다. 태그 전에 `tauri.conf.json`, `Cargo.toml`, `package.json` 의 버전을 올리세요.
+태그(`v*`) 푸시 → GitHub Actions(`.github/workflows/release.yml`)가 macOS(universal)·Windows·Linux 번들을 빌드해
+Release 초안에 첨부하고, 4개 빌드가 모두 성공하면 초안을 자동 게시합니다. 하나라도 실패하면 초안으로 남습니다.
+태그에 `-` 가 있으면(`v0.2.0-beta.1`) pre-release 로 게시됩니다.
+
+```bash
+# 1) 세 파일의 버전을 올린다: package.json · src-tauri/Cargo.toml · src-tauri/tauri.conf.json
+npm version 0.1.3 --no-git-tag-version   # package.json / package-lock.json
+# 2) 커밋 후 태그
+git tag v0.1.3 && git push origin main v0.1.3
+```
+
+### 코드 서명 (GitHub Secrets)
+
+| Secret | 용도 |
+|---|---|
+| `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` | Developer ID Application 인증서 `.p12`(base64) 와 비밀번호 |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: 이름 (팀ID)` |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | 공증(notarization) — Apple ID 와 앱 암호 |
+| `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 자동 업데이트 자산 서명 키 |
+
+- Tauri 는 `.app` 만 공증하므로 워크플로에 `.dmg` 를 따로 공증·스테이플해 Release 자산을 교체하는 단계가 있습니다.
+- Windows 코드 서명은 미도입 상태입니다 (외부 배포 시 Azure Artifact Signing 검토).
+- 인증서·키 파일은 절대 커밋하지 않습니다 (`.gitignore` 에 `*.p12`, `*.key` 등).
 
 ## 개발
 
 ```bash
 npm install
-npm run dev      # 개발 실행
-npm run build    # 배포 번들 (.dmg / .msi / .AppImage)
+npm run dev      # 개발 실행 (macOS 네이티브 알림은 번들이 아니라 동작하지 않음)
+npm run build    # 배포 번들 (.dmg / .msi / .AppImage) — 알림·업데이트 확인은 이 산출물로
 ```
 
 요구사항: Rust(stable), macOS 는 Xcode CLT, Windows 는 WebView2(기본 내장).
+로컬에서 서명된 macOS 번들이 필요하면 `APPLE_SIGNING_IDENTITY="Developer ID Application: ..." npm run build`.
+`RUST_LOG=debug` 로 실행하면 알림·업데이트 라이브러리의 내부 로그가 보입니다.
 
 ## 서버 저장 위치
 
