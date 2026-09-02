@@ -1,4 +1,6 @@
-# 태그(v*) 푸시 시 macOS(arm64/x64) · Windows · Linux 번들을 빌드해 GitHub Release 초안에 첨부한다.
+# 태그(v*) 푸시 시 macOS(universal) · Windows · Linux 번들을 빌드해 GitHub Release 초안에 첨부하고,
+# 4개 빌드가 모두 성공하면 초안을 자동 게시한다 (publish 잡). 하나라도 실패하면 초안으로 남아 확인할 수 있다.
+# 태그에 '-' 가 있으면(예: v0.2.0-beta.1) pre-release 로 게시하고 latest 로 표시하지 않는다.
 # macOS: Developer ID Application 서명 + Apple ID 방식 공증(notarization). 아래 APPLE_* 시크릿이 필요하다.
 # Windows: 미서명 (SmartScreen 경고 → "추가 정보 > 실행"). 외부 배포 시 Azure Artifact Signing 도입 예정.
 # Linux: 서명 불필요.
@@ -15,10 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS 는 유니버설(arm64 + x86_64) 단일 번들 — 사용자가 칩 종류를 고를 필요가 없고 Rosetta 안내도 뜨지 않는다
           - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
+            args: --target universal-apple-darwin
           - platform: windows-latest
             args: ''
           - platform: ubuntu-22.04
@@ -87,3 +88,29 @@ jobs:
             gh release delete-asset "$TAG" "$asset" -y || true
             gh release upload "$TAG" "$dmg"
           done
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Publish draft release
+        run: |
+          set -euo pipefail
+          # 릴리즈 노트가 비어 있으면 GitHub 자동 생성 노트(이전 태그와의 비교 링크 포함)로 채운다
+          body="$(gh release view "$TAG" --repo "$REPO" --json body --jq .body)"
+          if [ -z "$body" ]; then
+            gh api -X POST "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body > notes.md
+            gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
+          fi
+          if [[ "$TAG" == *-* ]]; then
+            gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+          fi
+          echo "published: https://github.com/$REPO/releases/tag/$TAG"

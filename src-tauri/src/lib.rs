@@ -4,6 +4,7 @@
 //! - 트레이 상주: 창을 닫아도 종료되지 않고 숨김 (SSE 연결 유지 → 알림 수신)
 //! - 원격 페이지(웹앱)가 호출하는 브리지 커맨드: desktop_notify / set_badge
 //!   (웹앱은 `window.__QAM_DESKTOP__` 만 알고 Tauri 에 종속되지 않는다)
+//! - 알림 클릭: notify-rust 응답 대기 → 창 표시 → 웹앱이 등록한 `__QAM_DESKTOP__.onNotificationClick(tag)` 호출
 //!
 //! 커맨드 추가 시: `build.rs` 의 AppManifest 목록 + `capabilities/*.json` 권한(allow-<command>)을
 //! 함께 갱신해야 한다. 원격 페이지에서 호출하는 커맨드는 `main-remote.json` 에도 넣는다.
@@ -17,7 +18,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager, State, Url, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 /* ─────────────── 서버 설정 (servers.json) ─────────────── */
 
@@ -168,20 +169,183 @@ fn open_launcher(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Re
 
 /* ─────────────── 커맨드: 웹앱 브리지 (원격 페이지에서 호출) ─────────────── */
 
+/// 네이티브 OS 알림. `tag` 가 있으면 클릭 시 웹앱의 `__QAM_DESKTOP__.onNotificationClick(tag)` 를 호출한다.
 #[tauri::command]
-fn desktop_notify(app: tauri::AppHandle, title: String, body: String) {
-    let _ = app
-        .notification()
-        .builder()
-        .title(if title.is_empty() { "QA Manager".into() } else { title })
-        .body(body)
-        .show();
+fn desktop_notify(app: tauri::AppHandle, title: String, body: String, tag: Option<String>) {
+    let title = if title.is_empty() { "QA Manager".to_string() } else { title };
+    #[cfg(target_os = "macos")]
+    notify_macos(app, title, body, tag);
+    #[cfg(not(target_os = "macos"))]
+    notify_other(app, title, body, tag);
+}
+
+/// macOS: UNUserNotificationCenter 의 async API 를 Tauri 의 tokio 런타임에서 실행한다.
+/// (blocking API 는 호출 순간 메인 런루프가 "대기 중"인지 검사해 웹뷰가 바쁘면 "Mainthread not running" 으로
+/// 실패하므로 쓰지 않는다.) 클릭 응답은 Tauri 가 돌리는 메인 런루프에서 delegate 로 전달된다.
+#[cfg(target_os = "macos")]
+fn notify_macos(app: tauri::AppHandle, title: String, body: String, tag: Option<String>) {
+    tauri::async_runtime::spawn(async move {
+        // UNUserNotificationCenter 는 번들(Info.plist)이 있어야 한다. `tauri dev`/cargo run 은 번들이 아니라 생략.
+        if mac_usernotifications::check_bundle().is_err() {
+            eprintln!("[qam] 번들이 아닌 실행(dev)에서는 네이티브 알림을 보낼 수 없습니다: {title}");
+            return;
+        }
+        let n = mac_usernotifications::Notification::new()
+            .title(&title)
+            .message(&body);
+        let handle = match n.send().await {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("[qam] 알림 표시 실패: {e}");
+                return;
+            }
+        };
+        // 버튼 없는 알림: 클릭이면 default action, 사용자가 지우면 dismissed 로 끝난다
+        match handle.response().await {
+            Ok(r) if r.is_default_action() => on_notification_click(&app, tag),
+            Ok(_) => {}
+            Err(e) => eprintln!("[qam] 알림 응답 대기 실패: {e}"),
+        }
+    });
+}
+
+/// Windows/Linux: notify-rust. 응답 대기는 블로킹이므로 알림마다 스레드를 하나 띄운다.
+#[cfg(not(target_os = "macos"))]
+fn notify_other(app: tauri::AppHandle, title: String, body: String, tag: Option<String>) {
+    let identifier = app.config().identifier.clone();
+    std::thread::spawn(move || {
+        let mut n = notify_rust::Notification::new();
+        n.summary(&title).body(&body).auto_icon();
+
+        #[cfg(target_os = "windows")]
+        {
+            // 설치된 앱에서만 AppUserModelID 지정. target/debug|release 직접 실행은 등록된 ID 가 없어 토스트가 뜨지 않는다.
+            if let Ok(exe) = tauri::utils::platform::current_exe() {
+                let dir = exe.parent().map(|p| p.display().to_string()).unwrap_or_default();
+                let sep = std::path::MAIN_SEPARATOR;
+                if !(dir.ends_with(&format!("{sep}target{sep}debug"))
+                    || dir.ends_with(&format!("{sep}target{sep}release")))
+                {
+                    n.app_id(&identifier);
+                }
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // XDG 알림 서버는 "default" 액션이 있어야 본문 클릭을 응답으로 전달한다
+            let _ = &identifier;
+            n.action("default", "열기");
+        }
+
+        let handle = match n.show() {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("[qam] 알림 표시 실패: {e}");
+                return;
+            }
+        };
+        let waited = handle.wait_for_response(move |r: &notify_rust::NotificationResponse| {
+            let clicked = match r {
+                notify_rust::NotificationResponse::Default => true,
+                notify_rust::NotificationResponse::Action(a) => a == "default",
+                _ => false,
+            };
+            if clicked {
+                on_notification_click(&app, tag);
+            }
+        });
+        if let Err(e) = waited {
+            eprintln!("[qam] 알림 응답 대기 실패: {e}");
+        }
+    });
+}
+
+/// 알림 클릭 처리: 창을 보이고 포커스한 뒤 웹앱의 클릭 핸들러에 tag 를 넘긴다 (메인 스레드에서 실행).
+fn on_notification_click(app: &tauri::AppHandle, tag: Option<String>) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(w) = handle.get_webview_window("main") else { return };
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        let Some(tag) = tag else { return };
+        let arg = serde_json::to_string(&tag).unwrap_or_else(|_| "null".to_string());
+        let _ = w.eval(format!(
+            "(function(){{var b=window.__QAM_DESKTOP__;\
+             if(b&&typeof b.onNotificationClick==='function'){{\
+               try{{b.onNotificationClick({arg})}}catch(e){{console.warn('[QAM desktop] onNotificationClick 실패:',e)}}}}}})();"
+        ));
+    });
 }
 
 #[tauri::command]
 fn set_badge(window: tauri::WebviewWindow, count: i64) {
     // macOS 독 / Linux 유니티 뱃지. 0 이면 제거. (Windows 는 미지원 — 무시)
     let _ = window.set_badge_count(if count > 0 { Some(count) } else { None });
+}
+
+/// macOS 알림 권한 확인. 미결정이면 시스템 권한 요청 팝업을 띄우고, 거부 상태면 설정 안내 다이얼로그를 띄운다.
+/// 앱 시작 시 한 번 호출. async API 를 tokio 에서 실행한다 (blocking 계열은 메인 런루프 검사로 실패할 수 있음).
+#[cfg(target_os = "macos")]
+fn ensure_notification_permission(app: tauri::AppHandle) {
+    use mac_usernotifications::AuthorizationStatus;
+    tauri::async_runtime::spawn(async move {
+        if mac_usernotifications::check_bundle().is_err() {
+            eprintln!("[qam] 번들이 아닌 실행(dev): 알림 권한 확인 생략");
+            return;
+        }
+        let status = match mac_usernotifications::get_notification_settings().await {
+            Ok(s) => s.authorization_status,
+            Err(e) => {
+                eprintln!("[qam] 알림 설정 조회 실패: {e}");
+                return;
+            }
+        };
+        eprintln!("[qam] 알림 권한 상태: {status:?}");
+        let denied = match status {
+            // 첫 실행: macOS 표준 팝업 ("QA Manager"에서 알림을 보내려고 합니다)
+            AuthorizationStatus::NotDetermined => match mac_usernotifications::request_auth().await {
+                Ok(granted) => !granted,
+                Err(e) => {
+                    eprintln!("[qam] 알림 권한 요청 실패: {e}");
+                    return;
+                }
+            },
+            AuthorizationStatus::Denied => true,
+            _ => false,
+        };
+        if denied {
+            // 다이얼로그는 블로킹이므로 tokio 워커가 아닌 별도 스레드에서 띄운다
+            std::thread::spawn(move || show_notification_guidance(&app));
+        }
+    });
+}
+
+/// 알림이 꺼져 있을 때 안내. "시스템 설정 열기"를 누르면 이 앱의 알림 설정 화면으로 이동한다.
+#[cfg(target_os = "macos")]
+fn show_notification_guidance(app: &tauri::AppHandle) {
+    let open_settings = app
+        .dialog()
+        .message(
+            "QA Manager 의 알림이 꺼져 있어 새 알림을 받을 수 없습니다.\n\
+             시스템 설정 > 알림 > QA Manager 에서 알림 허용을 켜 주세요.",
+        )
+        .title("알림 권한 필요")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "시스템 설정 열기".into(),
+            "나중에".into(),
+        ))
+        .blocking_show();
+    if open_settings {
+        let url = format!(
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={}",
+            app.config().identifier
+        );
+        if let Err(e) = open::that(&url) {
+            eprintln!("[qam] 시스템 설정 열기 실패: {e}");
+        }
+    }
 }
 
 /* ─────────────── 앱 셋업 ─────────────── */
@@ -200,7 +364,15 @@ const BRIDGE_JS: &str = r#"
     });
   }
   window.__QAM_DESKTOP__ = {
-    notify: function (p) { return inv('desktop_notify', { title: (p && p.title) || 'QA Manager', body: (p && p.body) || '' }); },
+    notify: function (p) {
+      return inv('desktop_notify', {
+        title: (p && p.title) || 'QA Manager',
+        body: (p && p.body) || '',
+        tag: (p && p.tag != null) ? String(p.tag) : null,
+      });
+    },
+    // 웹앱이 등록한다: 네이티브 알림 클릭 시 notify 에 넘긴 tag 로 호출된다
+    onNotificationClick: null,
     setBadge: function (n) { return inv('set_badge', { count: Math.max(0, n | 0) }); },
     openLauncher: function () { return inv('open_launcher'); },
   };
@@ -208,9 +380,15 @@ const BRIDGE_JS: &str = r#"
 "#;
 
 pub fn run() {
+    // RUST_LOG 가 설정된 경우에만 로그 출력 (알림 라이브러리 진단용)
+    let _ = env_logger::try_init();
     tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // macOS: 알림 권한 미결정이면 시스템 팝업, 거부면 안내 (별도 스레드)
+            #[cfg(target_os = "macos")]
+            ensure_notification_permission(app.handle().clone());
+
             // 설정 로드
             let config_path = app
                 .path()

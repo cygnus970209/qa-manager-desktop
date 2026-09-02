@@ -11,7 +11,12 @@ AFFiNE 방식의 **서버 선택형** 앱입니다 — 셀프호스팅 서버 UR
 - **메인 웹뷰** — 선택한 서버 URL 로 전환. 쿠키 인증·SSE 등 웹앱 동작 그대로
 - **트레이 상주** — 창을 닫아도 백그라운드 유지(SSE 연결 유지), 트레이에서 열기/서버 선택/종료
 - **네이티브 알림 + 독 뱃지** — 웹앱이 노출하는 `window.__QAM_DESKTOP__` 브리지로
-  새 알림 → OS 알림, 안읽음 수 → 앱 아이콘 뱃지(macOS/Linux)
+  새 알림 → OS 알림, 안읽음 수 → 앱 아이콘 뱃지(macOS/Linux).
+  알림을 클릭하면 창을 열고 웹앱이 등록한 `onNotificationClick(tag)` 로 해당 QA 로 이동한다.
+  (알림은 notify-rust 를 직접 사용 — Tauri 알림 플러그인은 데스크톱 클릭 이벤트를 제공하지 않음)
+- **알림 권한 안내(macOS)** — 시작 시 권한이 미결정이면 macOS 표준 허용 팝업을 띄우고, 거부 상태면
+  "시스템 설정 열기" 안내 다이얼로그를 띄운다. macOS 는 최신 UNUserNotificationCenter 를 쓰므로
+  **번들 앱에서만 알림이 동작**한다 — `npm run dev` 로는 알림을 테스트할 수 없고 `npm run build` 산출물로 확인할 것.
 
 웹앱 쪽 연동 코드는 qa-manager 리포의 `frontend/app/stores/notifications.ts` 에 있습니다
 (브리지가 없으면 아무 동작도 하지 않는 선택적 인터페이스 — Tauri 에 종속되지 않음).
