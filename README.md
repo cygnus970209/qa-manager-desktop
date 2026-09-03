@@ -27,6 +27,10 @@ AFFiNE 방식의 **서버 선택형** 앱입니다 — 셀프호스팅 서버 UR
 - **알림 권한 안내(macOS)** — 시작 시 권한이 미결정이면 macOS 표준 허용 팝업을 띄우고, 거부 상태면
   "시스템 설정 열기" 안내 다이얼로그를 띄운다. macOS 는 최신 UNUserNotificationCenter 를 쓰므로
   **번들 앱에서만 알림이 동작**한다 — `npm run dev` 로는 알림을 테스트할 수 없고 `npm run build` 산출물로 확인할 것.
+- **웹앱 설정 > 데스크톱 앱** — 웹앱의 `/settings/desktop` 화면이 브리지로 버전·플랫폼(`getInfo`),
+  수동 업데이트 확인(`checkForUpdate`), 알림 권한 상태·요청·시스템 설정 열기
+  (`getNotificationPermission` / `requestNotificationPermission` / `openNotificationSettings`)를 호출한다.
+  Windows/Linux 는 알림 권한 개념이 없어 항상 `granted`. 구버전 앱(메서드 없음)에서는 웹앱이 "앱을 업데이트해 주세요"로 안내한다.
 
 웹앱 쪽 연동 코드는 qa-manager 리포의 `frontend/app/stores/notifications.ts` 에 있습니다
 (브리지가 없으면 아무 동작도 하지 않는 선택적 인터페이스 — Tauri 에 종속되지 않음).

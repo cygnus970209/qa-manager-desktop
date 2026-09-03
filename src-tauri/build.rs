@@ -13,6 +13,11 @@ fn main() {
             "open_launcher",
             "desktop_notify",
             "set_badge",
+            "desktop_info",
+            "check_update",
+            "notification_permission",
+            "request_notification_permission",
+            "open_notification_settings",
         ])),
     )
     .expect("failed to run tauri-build");

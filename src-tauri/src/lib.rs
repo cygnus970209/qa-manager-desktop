@@ -426,6 +426,113 @@ fn info_dialog(app: &tauri::AppHandle, title: &str, message: &str) {
         .show(|_| {});
 }
 
+/* ─────────────── 웹앱 설정 화면(데스크톱 앱 항목)용 커맨드 ───────────────
+ * 웹앱의 /settings/desktop 이 브리지로 호출한다. 결과 알림(업데이트 있음/없음/실패)은 기존과 같이 네이티브 다이얼로그. */
+
+#[derive(Serialize)]
+struct DesktopInfo {
+    version: String,
+    /// "macos" | "windows" | "linux"
+    platform: &'static str,
+}
+
+#[tauri::command]
+fn desktop_info(app: tauri::AppHandle) -> DesktopInfo {
+    DesktopInfo {
+        version: app.package_info().version.to_string(),
+        platform: std::env::consts::OS,
+    }
+}
+
+/// 수동 업데이트 확인 (트레이 메뉴와 동일).
+#[tauri::command]
+fn check_update(app: tauri::AppHandle) {
+    check_for_update(app, true);
+}
+
+/// 알림 권한 상태: "granted" | "denied" | "not_determined" | "unsupported".
+/// Windows/Linux 는 notify-rust 에 권한 개념이 없어(OS 설정에서만 제어) 항상 granted.
+#[tauri::command]
+async fn notification_permission() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        macos_notification_permission().await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "granted".into()
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn macos_notification_permission() -> String {
+    use mac_usernotifications::AuthorizationStatus;
+    if mac_usernotifications::check_bundle().is_err() {
+        return "unsupported".into();
+    }
+    match mac_usernotifications::get_notification_settings().await {
+        Ok(s) => match s.authorization_status {
+            AuthorizationStatus::NotDetermined => "not_determined",
+            AuthorizationStatus::Denied => "denied",
+            _ => "granted",
+        }
+        .into(),
+        Err(e) => {
+            eprintln!("[qam] 알림 설정 조회 실패: {e}");
+            "unsupported".into()
+        }
+    }
+}
+
+/// 아직 묻지 않은 상태에서 시스템 권한 팝업을 띄운다. 결과 상태를 돌려준다.
+#[tauri::command]
+async fn request_notification_permission() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if mac_usernotifications::check_bundle().is_err() {
+            return "unsupported".into();
+        }
+        match mac_usernotifications::request_auth().await {
+            Ok(true) => "granted".into(),
+            Ok(false) => "denied".into(),
+            Err(e) => {
+                eprintln!("[qam] 알림 권한 요청 실패: {e}");
+                "unsupported".into()
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "granted".into()
+    }
+}
+
+/// OS 알림 설정 화면(이 앱 항목)을 연다.
+#[tauri::command]
+fn open_notification_settings(app: tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let url = format!(
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={}",
+            app.config().identifier
+        );
+        if let Err(e) = open::that(&url) {
+            eprintln!("[qam] 시스템 설정 열기 실패: {e}");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &app;
+        if let Err(e) = open::that("ms-settings:notifications") {
+            eprintln!("[qam] 시스템 설정 열기 실패: {e}");
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = &app;
+    }
+}
+
 /* ─────────────── 앱 셋업 ─────────────── */
 
 /// 원격 페이지에 주입되는 브리지. 웹앱은 이 전역 객체만 사용한다(Tauri 비종속 인터페이스).
@@ -453,6 +560,12 @@ const BRIDGE_JS: &str = r#"
     onNotificationClick: null,
     setBadge: function (n) { return inv('set_badge', { count: Math.max(0, n | 0) }); },
     openLauncher: function () { return inv('open_launcher'); },
+    // 설정 > 데스크톱 앱 화면용
+    getInfo: function () { return inv('desktop_info'); },
+    checkForUpdate: function () { return inv('check_update'); },
+    getNotificationPermission: function () { return inv('notification_permission'); },
+    requestNotificationPermission: function () { return inv('request_notification_permission'); },
+    openNotificationSettings: function () { return inv('open_notification_settings'); },
   };
 })();
 "#;
@@ -569,7 +682,12 @@ pub fn run() {
             connect,
             open_launcher,
             desktop_notify,
-            set_badge
+            set_badge,
+            desktop_info,
+            check_update,
+            notification_permission,
+            request_notification_permission,
+            open_notification_settings
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

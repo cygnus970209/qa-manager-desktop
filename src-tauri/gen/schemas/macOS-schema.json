@@ -183,10 +183,22 @@
           "markdownDescription": "Enables the add_server command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-update",
+          "markdownDescription": "Enables the check_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the connect command without any pre-configured scope.",
           "type": "string",
           "const": "allow-connect",
           "markdownDescription": "Enables the connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the desktop_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-desktop-info",
+          "markdownDescription": "Enables the desktop_info command without any pre-configured scope."
         },
         {
           "description": "Enables the desktop_notify command without any pre-configured scope.",
@@ -201,16 +213,34 @@
           "markdownDescription": "Enables the list_servers command without any pre-configured scope."
         },
         {
+          "description": "Enables the notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notification-permission",
+          "markdownDescription": "Enables the notification_permission command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_launcher command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-launcher",
           "markdownDescription": "Enables the open_launcher command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_notification_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-notification-settings",
+          "markdownDescription": "Enables the open_notification_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the remove_server command without any pre-configured scope.",
           "type": "string",
           "const": "allow-remove-server",
           "markdownDescription": "Enables the remove_server command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-request-notification-permission",
+          "markdownDescription": "Enables the request_notification_permission command without any pre-configured scope."
         },
         {
           "description": "Enables the set_badge command without any pre-configured scope.",
@@ -225,10 +255,22 @@
           "markdownDescription": "Denies the add_server command without any pre-configured scope."
         },
         {
+          "description": "Denies the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-update",
+          "markdownDescription": "Denies the check_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the connect command without any pre-configured scope.",
           "type": "string",
           "const": "deny-connect",
           "markdownDescription": "Denies the connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the desktop_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-desktop-info",
+          "markdownDescription": "Denies the desktop_info command without any pre-configured scope."
         },
         {
           "description": "Denies the desktop_notify command without any pre-configured scope.",
@@ -243,16 +285,34 @@
           "markdownDescription": "Denies the list_servers command without any pre-configured scope."
         },
         {
+          "description": "Denies the notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notification-permission",
+          "markdownDescription": "Denies the notification_permission command without any pre-configured scope."
+        },
+        {
           "description": "Denies the open_launcher command without any pre-configured scope.",
           "type": "string",
           "const": "deny-open-launcher",
           "markdownDescription": "Denies the open_launcher command without any pre-configured scope."
         },
         {
+          "description": "Denies the open_notification_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-notification-settings",
+          "markdownDescription": "Denies the open_notification_settings command without any pre-configured scope."
+        },
+        {
           "description": "Denies the remove_server command without any pre-configured scope.",
           "type": "string",
           "const": "deny-remove-server",
           "markdownDescription": "Denies the remove_server command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-request-notification-permission",
+          "markdownDescription": "Denies the request_notification_permission command without any pre-configured scope."
         },
         {
           "description": "Denies the set_badge command without any pre-configured scope.",
