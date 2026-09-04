@@ -6,6 +6,8 @@
 //!   (웹앱은 `window.__QAM_DESKTOP__` 만 알고 Tauri 에 종속되지 않는다)
 //! - 알림 클릭: notify-rust 응답 대기 → 창 표시 → 웹앱이 등록한 `__QAM_DESKTOP__.onNotificationClick(tag)` 호출
 //! - 자동 업데이트: 시작 5초 후 + 6시간마다 GitHub Release 의 latest.json 확인, 트레이 "업데이트 확인" 으로 수동 확인
+//! - 새 창 요청(target=_blank 링크, window.open): 창은 하나뿐이므로 서버 내부 링크는 같은 창에서 이동,
+//!   외부 http(s) 링크는 OS 기본 브라우저로 넘긴다 (handle_new_window)
 //!
 //! 커맨드 추가 시: `build.rs` 의 AppManifest 목록 + `capabilities/*.json` 권한(allow-<command>)을
 //! 함께 갱신해야 한다. 원격 페이지에서 호출하는 커맨드는 `main-remote.json` 에도 넣는다.
@@ -536,6 +538,48 @@ fn open_notification_settings(app: tauri::AppHandle) {
 /* ─────────────── 앱 셋업 ─────────────── */
 
 /// 원격 페이지에 주입되는 브리지. 웹앱은 이 전역 객체만 사용한다(Tauri 비종속 인터페이스).
+/* ─────────────── 새 창 요청 (target=_blank 링크, window.open) ─────────────── */
+
+/// 접속 중인(마지막으로 연결한) 서버 URL. 런처 화면이거나 설정이 없으면 None.
+fn current_server_url(state: &AppState) -> Option<Url> {
+    let config = state.config.lock().ok()?;
+    let id = config.last.as_ref()?;
+    let entry = config.servers.iter().find(|s| &s.id == id)?;
+    Url::parse(&entry.url).ok()
+}
+
+/// 웹뷰의 새 창 요청 처리. 셸은 창을 하나만 쓰므로 새 창을 만들지 않고
+/// - 접속 중인 서버와 같은 origin(앱 내부 링크) → 같은 창에서 이동
+/// - 그 밖의 http(s) → OS 기본 브라우저, mailto → 메일 앱
+/// - blob:/data:/about:blank 등은 무시
+/// 처리기를 달지 않으면 웹뷰가 요청을 조용히 버려서 target=_blank 링크·window.open 이 아무 반응도 없다.
+fn handle_new_window(app: &tauri::AppHandle, url: Url) {
+    match url.scheme() {
+        "http" | "https" => {
+            let same_server = current_server_url(&app.state::<AppState>())
+                .map(|server| server.origin() == url.origin())
+                .unwrap_or(false);
+            if same_server {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(e) = window.navigate(url) {
+                        eprintln!("[qam] 같은 창 이동 실패: {e}");
+                    }
+                }
+                return;
+            }
+            if let Err(e) = open::that_detached(url.as_str()) {
+                eprintln!("[qam] 외부 링크 열기 실패: {e}");
+            }
+        }
+        "mailto" => {
+            if let Err(e) = open::that_detached(url.as_str()) {
+                eprintln!("[qam] 메일 링크 열기 실패: {e}");
+            }
+        }
+        _ => {}
+    }
+}
+
 const BRIDGE_JS: &str = r#"
 (function () {
   if (window.__QAM_DESKTOP__) return;
@@ -601,11 +645,16 @@ pub fn run() {
             });
 
             // 메인 창 (런처 로드 + 브리지 주입 — 주입 스크립트는 이후 내비게이션에도 유지됨)
+            let new_window_handle = app.handle().clone();
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("QA Manager")
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(900.0, 600.0)
                 .initialization_script(BRIDGE_JS)
+                .on_new_window(move |url, _features| {
+                    handle_new_window(&new_window_handle, url);
+                    tauri::webview::NewWindowResponse::Deny
+                })
                 .build()?;
 
             // 런처 URL 저장 (서버 선택 화면 복귀용)
